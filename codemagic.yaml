@@ -1,1 +1,46 @@
 
+workflows:
+  ios-unsigned:
+    name: CHZ MODZ — IPA unsigned
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT: "ThreeOneOSFive.xcodeproj"
+        XCODE_SCHEME: "CHZ MODZ"
+        LICENSE_VALIDATION_BASE_URL: "https://nxcheatsgenerator.discloud.app"
+    scripts:
+      - name: Build iOS archive without code signing
+        script: |
+          set -euo pipefail
+          ARCHIVE_PATH="$CM_BUILD_DIR/build/CHZ-MODZ-unsigned.xcarchive"
+          rm -rf "$ARCHIVE_PATH" "$CM_BUILD_DIR/build/unsigned-ipa" "$CM_BUILD_DIR/build/ios/ipa"
+          mkdir -p "$CM_BUILD_DIR/build/ios/ipa"
+          xcodebuild archive \
+            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            LICENSE_VALIDATION_BASE_URL="$LICENSE_VALIDATION_BASE_URL"
+      - name: Package unsigned IPA
+        script: |
+          set -euo pipefail
+          ARCHIVE_PATH="$CM_BUILD_DIR/build/CHZ-MODZ-unsigned.xcarchive"
+          STAGING_PATH="$CM_BUILD_DIR/build/unsigned-ipa"
+          APP_PATH="$(find "$ARCHIVE_PATH/Products/Applications" -maxdepth 1 -name "*.app" -print -quit)"
+          test -n "$APP_PATH"
+          mkdir -p "$STAGING_PATH/Payload"
+          cp -R "$APP_PATH" "$STAGING_PATH/Payload/"
+          /usr/libexec/PlistBuddy -c "Print :LicenseValidationBaseURL" "$APP_PATH/Info.plist" || true
+          cd "$STAGING_PATH"
+          /usr/bin/zip -qry "$CM_BUILD_DIR/build/ios/ipa/CHZ-MODZ-unsigned.ipa" Payload
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/CHZ-MODZ-unsigned.xcarchive/**
+      - /tmp/xcodebuild_logs/*.log
