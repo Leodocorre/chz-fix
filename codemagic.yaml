@@ -1,4 +1,3 @@
-
 workflows:
   ios-unsigned:
     name: CHZ MODZ — IPA unsigned
@@ -11,14 +10,60 @@ workflows:
         XCODE_SCHEME: "CHZ MODZ"
         LICENSE_VALIDATION_BASE_URL: "https://nxcheatsgenerator.discloud.app"
     scripts:
+      - name: Unpack the updated source
+        script: |
+          set -euo pipefail
+          rm -rf "$CM_BUILD_DIR/workspace"
+          mkdir -p "$CM_BUILD_DIR/workspace"
+
+          ZIP=""
+          for candidate in \
+            "$CM_BUILD_DIR/CHZ-MODZ-source-updated.zip" \
+            "$CM_BUILD_DIR/CHZ-MODZ-source-fixed.zip" \
+            "$CM_BUILD_DIR/CHZ-MODZ-source.zip" \
+            "$CM_BUILD_DIR/NX-CHEATS-source-fixed.zip" \
+            "$CM_BUILD_DIR/NX-CHEATS-source-updated.zip"
+          do
+            if [ -f "$candidate" ]; then
+              ZIP="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$ZIP" ]; then
+            echo "Nenhum zip do source encontrado."
+            ls -la "$CM_BUILD_DIR"
+            exit 1
+          fi
+
+          echo "Usando: $ZIP"
+          unzip -q "$ZIP" -d "$CM_BUILD_DIR/workspace"
+          echo "Conteudo apos unzip:"
+          ls -la "$CM_BUILD_DIR/workspace"
+          find "$CM_BUILD_DIR/workspace" -name "*.xcodeproj" | head -10
+
       - name: Build iOS archive without code signing
         script: |
           set -euo pipefail
+
+          if [ -d "$CM_BUILD_DIR/workspace/NX-CHEATS/ThreeOneOSFive.xcodeproj" ]; then
+            SOURCE_DIR="$CM_BUILD_DIR/workspace/NX-CHEATS"
+          elif [ -d "$CM_BUILD_DIR/workspace/ThreeOneOSFive.xcodeproj" ]; then
+            SOURCE_DIR="$CM_BUILD_DIR/workspace"
+          else
+            echo "Projeto nao encontrado apos unzip:"
+            find "$CM_BUILD_DIR/workspace" -name "*.xcodeproj" 2>/dev/null || true
+            ls -laR "$CM_BUILD_DIR/workspace" | head -80
+            exit 1
+          fi
+
+          echo "SOURCE_DIR=$SOURCE_DIR"
           ARCHIVE_PATH="$CM_BUILD_DIR/build/CHZ-MODZ-unsigned.xcarchive"
           rm -rf "$ARCHIVE_PATH" "$CM_BUILD_DIR/build/unsigned-ipa" "$CM_BUILD_DIR/build/ios/ipa"
           mkdir -p "$CM_BUILD_DIR/build/ios/ipa"
+
           xcodebuild archive \
-            -project "$CM_BUILD_DIR/$XCODE_PROJECT" \
+            -project "$SOURCE_DIR/$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -sdk iphoneos \
@@ -28,6 +73,7 @@ workflows:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             LICENSE_VALIDATION_BASE_URL="$LICENSE_VALIDATION_BASE_URL"
+
       - name: Package unsigned IPA
         script: |
           set -euo pipefail
@@ -37,9 +83,11 @@ workflows:
           test -n "$APP_PATH"
           mkdir -p "$STAGING_PATH/Payload"
           cp -R "$APP_PATH" "$STAGING_PATH/Payload/"
+          echo "LicenseValidationBaseURL no app:"
           /usr/libexec/PlistBuddy -c "Print :LicenseValidationBaseURL" "$APP_PATH/Info.plist" || true
           cd "$STAGING_PATH"
           /usr/bin/zip -qry "$CM_BUILD_DIR/build/ios/ipa/CHZ-MODZ-unsigned.ipa" Payload
+
     artifacts:
       - build/ios/ipa/*.ipa
       - build/CHZ-MODZ-unsigned.xcarchive/**
